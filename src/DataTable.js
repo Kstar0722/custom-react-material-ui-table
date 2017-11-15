@@ -1,7 +1,6 @@
 import React from 'react';
 import classNames from 'classnames';
 import PropTypes from 'prop-types';
-import { withStyles } from 'material-ui/styles';
 import keycode from 'keycode';
 import Table, {
   TableBody,
@@ -22,6 +21,7 @@ import DeleteIcon from 'material-ui-icons/Delete';
 import SearchIcon from 'material-ui-icons/Search'
 import FilterListIcon from 'material-ui-icons/FilterList'
 import TextField from 'material-ui/TextField';
+
 class DataTable extends React.Component{
     constructor(props) {
         super(props)
@@ -30,26 +30,40 @@ class DataTable extends React.Component{
             order: 'asc',
             orderBy: 'name',
             filterShowFlag:false,
-            filterValue:''
+            filterValue:'',
+            data:[],
+            columnsKey:[],
+            headerLabels:[],
         }
     }
-
     componentWillMount()
     {
         let keys = [];
         let labels = [];
+        let subElement = [];
+        let dataTypes = [];
         this.props.children.map(child=>{
             keys.push(child.props.dataField)
             labels.push(child.props.label)
+            subElement.push(child.props.subElement)
+            dataTypes.push(child.props.dataType)
         })
-        const data = this.props.data.sort((a, b) => (a[this.props.columnorderBy] < b[this.props.columnorderBy] ? -1 : 1))
+        let propsData = []
+        if(this.props.isSortEnable)
+        {
+            propsData = this.props.data.sort((a, b) => (b[this.props.defaultOrderBy] == undefined? -1 : a[this.props.defaultOrderBy] < b[this.props.defaultOrderBy] ? -1 : 1))
+        }else{
+            propsData = this.props.data
+        }  
         this.setState({
+            data: propsData,
             columnsKey: keys,
+            subElements:subElement, 
             headerLabels: labels,
+            dataTypes: dataTypes,
             page: this.props.page,
             rowsPerPage: this.props.rowsPerPage,
             rowsPerPageOptions: this.props.rowsPerPageOptions,
-            data: data,
             orderBy: this.props.columnorderBy,
             rowId: this.props.rowId,
             isSortEnable: this.props.isSortEnable,
@@ -59,19 +73,47 @@ class DataTable extends React.Component{
         })
         
     }
+    componentWillReceiveProps(nextProps)
+    {   
+        let data = []
+        if(nextProps.isSortEnable)
+        {
+           data = nextProps.data.sort((a, b) => (b[nextProps.defaultOrderBy] == undefined? -1 : a[nextProps.defaultOrderBy] < b[nextProps.defaultOrderBy] ? -1 : 1))
+        }else{
+            data = nextProps.data
+        }   
+         
+        this.setState({
+            data: data,
+
+        })
+        
+    }
+
     handleSelectAllClick(checked){
         if (checked) {
           this.setState({ selected: this.state.data.map(n => n[this.state.rowId]) });
-          return;
+          if(this.props.getCheckboxVal != undefined)
+          {
+            this.props.getCheckboxVal(this.state.data.map(n => n[this.state.rowId]));
+          }
+          
+        }else{
+            this.setState({ selected: [] });
+            
+            if(this.props.getCheckboxVal != undefined)
+            {
+                this.props.getCheckboxVal([]);
+            }
         }
-        this.setState({ selected: [] });
+        
     };
 
     handleKeyDown = (event, id) => {
         if (keycode(event) === 'space') {
           this.handleRowClick(event, id);
         }
-      };
+    };
     
     handleRowClick = (event, id) => {
         const { selected } = this.state;
@@ -92,6 +134,11 @@ class DataTable extends React.Component{
         }
     
         this.setState({ selected: newSelected });
+        if(this.props.getCheckboxVal != undefined)
+        {
+            this.props.getCheckboxVal(newSelected);
+        }
+        
     }
     handleChangePage = (event, page) => {
         this.setState({ page });
@@ -116,8 +163,8 @@ class DataTable extends React.Component{
 
         const data =
             order === 'desc'
-            ? this.state.data.sort((a, b) => (b[orderBy] < a[orderBy] ? -1 : 1))
-            : this.state.data.sort((a, b) => (a[orderBy] < b[orderBy] ? -1 : 1));
+            ? this.state.data.sort((a, b) => (a[orderBy]==undefined? -1 : b[orderBy] < a[orderBy] ? -1 : 1))
+            : this.state.data.sort((a, b) => (b[orderBy]==undefined? -1 : a[orderBy] < b[orderBy] ? -1 : 1));
 
         this.setState({ data, order, orderBy });
         
@@ -128,7 +175,6 @@ class DataTable extends React.Component{
     }
 
     handleFilterChange = event =>{
-        console.log('')
         const filterVal = event.target.value
         const filterData = this.props.data
         const columnsKey = this.state.columnsKey
@@ -137,7 +183,9 @@ class DataTable extends React.Component{
         {
             for(let j = 0; j < columnsKey.length; j ++)
             {
-                if(filterData[i][columnsKey[j]].toLowerCase().indexOf(filterVal.toLowerCase()) != -1)
+                if(filterData[i][columnsKey[j]] == undefined) continue;
+                
+                if(filterData[i][columnsKey[j]].toString().toLowerCase().indexOf(filterVal.toLowerCase()) != -1)
                 {
                     data.push(filterData[i])
                     break;
@@ -153,9 +201,9 @@ class DataTable extends React.Component{
     }
     render()
     {
-        const {data, rowId, selected, columnsKey, page, rowsPerPage, rowsPerPageOptions, headerLabels, filterValue, filterShowFlag, order, orderBy, isSortEnable, isCheckboxEnable, isFilterbarEnable, isPaginationEnable} = this.state
+        const {data, rowId, selected, columnsKey, subElements, page, dataTypes, rowsPerPage, rowsPerPageOptions, headerLabels, filterValue, filterShowFlag, order, orderBy, isSortEnable, isCheckboxEnable, isFilterbarEnable, isPaginationEnable} = this.state
         return(
-            <div>
+            <div style={{overflowX: 'auto'}}>
             {isFilterbarEnable&&
                 <Paper>
                 <Toolbar>
@@ -165,16 +213,15 @@ class DataTable extends React.Component{
                         }
                     </div>
                     {filterShowFlag?
-                        <TextField
-                            style={{flex: '1 1 100%', marginLeft: 10}}
-                            value={filterValue}
+                        <input
+                            style={{flex: '1 1 100%', marginLeft: 10, marginBottom:5}}
                             onChange={event => this.handleFilterChange(event)}
                             
                             />
                         :<div style={{flex: '1 1 100%'}} />}
                     <div>
                         <IconButton
-                            color={filterShowFlag?"primary":""}
+                            color={filterShowFlag?"primary":"default"}
                             aria-label="Filter list"
                             onClick={this.handleFilterClick.bind(this)}
                         >
@@ -190,19 +237,20 @@ class DataTable extends React.Component{
                         {isCheckboxEnable&&
                             <TableCell padding="checkbox">
                                 <Checkbox
-                                indeterminate={selected.length > 0 && selected.length < data.length}
-                                checked={selected.length > 0}
-                                onClick={this.handleSelectAllClick.bind(this, selected.length === data.length ? false: true)}
+                                    indeterminate={selected.length > 0 && selected.length < data.length}
+                                    checked={selected.length > 0}
+                                    onClick={this.handleSelectAllClick.bind(this, selected.length === data.length ? false: true)}
                                 />
                             </TableCell>
                         }
-                        {headerLabels.map(label => {
+                        {headerLabels != [] && headerLabels.map((label, index) => {
                             return(
-                                <TableCell>
+                                <TableCell
+                                >
                                     {isSortEnable?<TableSortLabel
-                                        active={orderBy === label}
+                                        active={orderBy == columnsKey[index]}
                                         direction={order}
-                                        onClick={event => this.handleRequestSort(event, label)}
+                                        onClick={event => this.handleRequestSort(event, columnsKey[index])}
                                     >
                                         {label}
                                     </TableSortLabel>
@@ -214,7 +262,7 @@ class DataTable extends React.Component{
                     </TableRow>
                 </TableHead>
                 <TableBody>
-                    {data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(rowData=>{
+                    {data != [] && isPaginationEnable == true && data.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(rowData=>{
                         const isSelected = this.isSelected(rowData[rowId]);
                         return (
                             <TableRow
@@ -232,9 +280,43 @@ class DataTable extends React.Component{
                                         <Checkbox checked={isSelected} />
                                     </TableCell>
                                 }
-                                {columnsKey.map(key=>{
+                                {columnsKey != [] && columnsKey.map((key, index)=>{
                                     return (
-                                        <TableCell>{rowData[key]}</TableCell>
+                                        <TableCell>
+                                            {subElements[index]==undefined?rowData[key]:
+                                                subElements[index](rowData[key], rowData)
+                                            }
+                                        </TableCell>
+                                    )
+                                })}
+                            </TableRow>
+                        )
+                    })}
+                    {data != [] && isPaginationEnable == false && data.map(rowData=>{
+                        const isSelected = this.isSelected(rowData[rowId]);
+                        return (
+                            <TableRow
+                                hover
+                                onClick={event => this.handleRowClick(event, rowData[rowId])}
+                                onKeyDown={event => this.handleKeyDown(event, rowData[rowId])}
+                                role="checkbox"
+                                aria-checked={isSelected}
+                                tabIndex={-1}
+                                key={rowData[rowId]}
+                                selected={isSelected}
+                            >
+                                {isCheckboxEnable&&
+                                    <TableCell padding="checkbox">
+                                        <Checkbox checked={isSelected} />
+                                    </TableCell>
+                                }
+                                {columnsKey != [] && columnsKey.map((key, index)=>{
+                                    return (
+                                        <TableCell>
+                                            {subElements[index]==undefined?rowData[key]:
+                                                subElements[index](rowData[key], rowData)
+                                            }
+                                        </TableCell>
                                     )
                                 })}
                             </TableRow>
@@ -268,11 +350,25 @@ DataTable.propTypes = {
     page: PropTypes.number,
     rowsPerPage: PropTypes.number,
     rowsPerPageOptions: PropTypes.array,
-    columnorderBy:PropTypes.string,
+    defaultOrderBy:PropTypes.string,
     isSortEnable: PropTypes.bool,
     isPaginationEnable: PropTypes.bool,
     isCheckboxEnable: PropTypes.bool,
     isFilterbarEnable: PropTypes.bool,
+    getCheckboxVal: PropTypes.func,
+}
+
+DataTable.defaultProps = {
+    data: [],
+    rowId: "_id",
+    page: 0,
+    rowsPerPage: 5,
+    rowsPerPageOptions : [5,10,25,50],
+    defaultOrderBy: '',
+    isSortEnable: false,
+    isPaginationEnable: false,
+    isCheckboxEnable: false,
+    isFilterbarEnable: false
 }
 
 export default DataTable
